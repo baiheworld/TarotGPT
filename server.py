@@ -61,6 +61,11 @@ class TarotBot:
         以一种客观的、中立的、不带期望和担忧的心态，
         尽量平和地面对您想要占卜的问题。
         当您准备好了，请向我说出您的问题。
+
+        请选择一个占卜主题（输入对应数字）：
+        1. 运势
+        2. 决策
+        3. 爱情
         """
         return meditation_guide
         
@@ -95,21 +100,35 @@ class TarotBot:
         for part in parts:
             self.cards.extend(part)
             
-    def draw_cards(self, numbers):
-        # 根据用户选择的数字抽取卡牌
-        self.selected_cards = [(num-1, self.cards[num-1][1]) for num in numbers]
+    def draw_cards(self, numbers, topic):
+        # 根据用户选择的数字从洗牌后的牌组中抽取卡牌
+        self.selected_cards = []
+        for num in numbers:
+            card_index = self.cards[num-1][0]  # 获取洗牌后该位置的牌的索引
+            is_upright = self.cards[num-1][1]  # 获取该牌的正逆位
+            self.selected_cards.append((card_index, is_upright))
+            
+        # 根据主题设置不同的解读框架
+        topic_contexts = {
+            1: "运势",
+            2: "决策",
+            3: "爱情"
+        }
         
         template = """
-        请为以下抽取的塔罗牌进行解读：
+        请以{topic}为主题，为以下抽取的塔罗牌进行解读：
         第一张牌（过去）：{card1}，{position1}
         第二张牌（现在）：{card2}，{position2}
         第三张牌（未来）：{card3}，{position3}
         
         请提供详细的解读，包括：
-        1. 每张牌的基本含义
-        2. 牌的正逆位解释
-        3. 三张牌之间的关联
-        4. 对问题的整体建议
+        1. 每张牌在{topic}主题下的的具体含义
+        2. 牌的正逆位解释及其对当前主题的影响
+        3. 三张牌之间的关联及其对主题的整体启示
+        4. 基于当前主题的具体建议
+        5. 基于当前主题的行动指导
+
+        请用中文回答，并注意使用专业的塔罗牌解读术语和完整的分析。
         """
         
         prompt = ChatPromptTemplate.from_template(template)
@@ -118,6 +137,7 @@ class TarotBot:
         positions = ["正位" if card[1] else "逆位" for card in self.selected_cards]
         
         response = chain.invoke({
+            "topic": topic_contexts[topic],
             "card1": self.tarot_cards[self.selected_cards[0][0]],
             "position1": positions[0],
             "card2": self.tarot_cards[self.selected_cards[1][0]],
@@ -138,6 +158,7 @@ def main():
     
     # 1. 引导冥想
     print(bot.start_meditation())
+    topic = int(input("请选择占卜主题（1-3）："))
     
     # 2. 请求数字
     print(bot.request_numbers())
@@ -151,13 +172,18 @@ def main():
     
     # 5. 显示抽到的牌
     print("\n您抽到的牌是：")
-    selected_cards = [(num-1, bot.cards[num-1][1]) for num in user_numbers]  # 获取牌号和正逆位
+    selected_cards = []
+    for num in user_numbers:
+        card_index = bot.cards[num-1][0]  # 获取洗牌后该位置的牌的索引
+        is_upright = bot.cards[num-1][1]  # 获取该牌的正逆位
+        selected_cards.append((card_index, is_upright))
+
     for i, (card_num, is_upright) in enumerate(selected_cards, 1):
         position = "正位" if is_upright else "逆位"
         print(f"第{i}张牌：{bot.tarot_cards[card_num]}，{position}")
     
     print("\n塔罗牌解读：")
-    reading = bot.perform_reading(user_numbers)
+    reading = bot.draw_cards(user_numbers, topic)
     print(reading)
 
 
