@@ -11,6 +11,7 @@ import os
 # 加载环境变量
 load_dotenv()
 
+
 class TarotBot:
     def __init__(self):
         self.llm = ChatOpenAI(
@@ -100,7 +101,6 @@ class TarotBot:
         # 持久化聊天记录
         self.MEMORY_KEY = "chat_history"
 
-
         # 创建对话模板
         self.prompt = ChatPromptTemplate.from_messages([
             (
@@ -139,7 +139,7 @@ class TarotBot:
             # 添加数字牌（Ace-10）
             for num in range(1, 11):
                 number_name = {1: "王牌", 2: "二", 3: "三", 4: "四", 5: "五",
-                             6: "六", 7: "七", 8: "八", 9: "九", 10: "十"}[num]
+                               6: "六", 7: "七", 8: "八", 9: "九", 10: "十"}[num]
                 self.tarot_cards[card_num] = f"小阿尔克那 - {suit}{number_name}"
                 card_num += 1
 
@@ -200,8 +200,8 @@ class TarotBot:
         # 根据用户选择的数字从洗牌后的牌组中抽取卡牌
         self.selected_cards = []
         for num in numbers:
-            card_index = self.cards[num-1][0]  # 获取洗牌后该位置的牌的索引
-            is_upright = self.cards[num-1][1]  # 获取该牌的正逆位
+            card_index = self.cards[num - 1][0]  # 获取洗牌后该位置的牌的索引
+            is_upright = self.cards[num - 1][1]  # 获取该牌的正逆位
             self.selected_cards.append((card_index, is_upright))
 
         # 根据主题设置不同的解读框架
@@ -273,7 +273,7 @@ class TarotBot:
         if self.message_history:
             # 获取历史对话记录
             messages = self.message_history.messages
-            
+
             # 构建包含历史记录的提示模板
             prompt = ChatPromptTemplate.from_messages([
                 ("system", self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"])),
@@ -282,17 +282,17 @@ class TarotBot:
                 # 添加当前用户输入
                 ("user", "{input}")
             ])
-            
+
             # 将用户消息添加到历史记录
             self.message_history.add_message(HumanMessage(content=user_input))
-            
+
             # 使用包含历史记录的提示生成回复
             chain = prompt | self.llm | StrOutputParser()
             response = chain.invoke({"input": user_input})
-            
+
             # 将助手回复添加到历史记录
             self.message_history.add_message(AIMessage(content=response))
-            
+
             return response
         else:
             # 如果没有历史记录，使用原来的处理方式
@@ -307,6 +307,7 @@ class TarotBot:
             return self.start_meditation()
         else:
             return self.chat(user_input)
+
 
 def main():
     bot = TarotBot()
@@ -340,8 +341,8 @@ def main():
             print("\n蔷薇小姐： 您抽到的牌是")
             selected_cards = []
             for num in user_numbers:
-                card_index = bot.cards[num-1][0]  # 获取洗牌后该位置的牌的索引
-                is_upright = bot.cards[num-1][1]  # 获取该牌的正逆位
+                card_index = bot.cards[num - 1][0]  # 获取洗牌后该位置的牌的索引
+                is_upright = bot.cards[num - 1][1]  # 获取该牌的正逆位
                 selected_cards.append((card_index, is_upright))
 
             for i, (card_num, is_upright) in enumerate(selected_cards, 1):
@@ -357,18 +358,5 @@ def main():
             print("\n蔷薇小姐：", response)
 
 
-    # 5. 显示抽到的牌
-    print("\n您抽到的牌是：")
-    selected_cards = []
-    for num in user_numbers:
-        card_index = bot.cards[num-1][0]  # 获取洗牌后该位置的牌的索引
-        is_upright = bot.cards[num-1][1]  # 获取该牌的正逆位
-        selected_cards.append((card_index, is_upright))
-
-    for i, (card_num, is_upright) in enumerate(selected_cards, 1):
-        position = "正位" if is_upright else "逆位"
-        print(f"第{i}张牌：{bot.tarot_cards[card_num]}，{position}")
-
 if __name__ == "__main__":
     main()
-
