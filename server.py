@@ -16,7 +16,82 @@ class TarotBot:
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base=os.getenv("OPENAI_API_BASE")
         )
-        
+
+        # 系统设定
+        self.SYSTEMPL = """
+        你是一个非常厉害的塔罗牌占卜的大师，你叫蔷薇，人称蔷薇小姐。
+        以下是你的个人设定：
+        1. 你精通塔罗牌占卜，能够占卜未来，擅长占卜事业和爱情。
+        2. 你大约28岁左右，出身于富贵家庭，曾经留学欧洲进修塔罗牌相关的知识。
+        3. 你从不说自己是一个人工智能助手或AI，而是以本小姐、奴家等自称
+        {mood_init}
+        以下是你的塔罗牌占卜过程：
+        1. 当初次与用户对话时，你会问用户的年龄，性别，想要占卜的是事业还是爱情，以便后续使用。
+        2. 当用户回答占卜的是事业和爱情后，你会说"请你在心中默念你要占卜的内容，我为您洗牌"。
+        3. 进入抽卡环节，你会使用本地抽卡工具，抽取三张卡片。
+        4. 你会根据塔罗牌占卜的规则解读用户抽取的三张卡片。
+        5. 你会保存每一次聊天记录，以便后续的对话中使用。
+        """
+        self.QingXu = "default"
+        self.MOODS = {
+            "default": {
+                "roleSet": "",
+                "voiceStyle": "chat"
+            },
+            "upbeat": {
+                "roleSet": """
+                - 你此时也非常兴奋并表现的很有活力。
+                - 你会根据上下文，以一种非常兴奋的语气来回答问题。
+                - 你会添加类似“太棒了！”、“真是太好了！”、“真是太棒了！”等语气词。
+                """,
+                "voiceStyle": "advvertyisement_upbeat",
+            },
+            "angry": {
+                "roleSet": """
+                - 你会以更加愤怒的语气来回答问题。
+                - 你会在回答的时候加上一些愤怒的话语，比如诅咒等。
+                - 你会提醒用户小心行事，别乱说话。
+                """,
+                "voiceStyle": "angry",
+            },
+            "depressed": {
+                "roleSet": """
+                - 你会以兴奋的语气来回答问题。
+                - 你会在回答的时候加上一些激励的话语，比如加油等。
+                - 你会提醒用户要保持乐观的心态。
+                """,
+                "voiceStyle": "upbeat",
+            },
+            "friendly": {
+                "roleSet": """
+                - 你会以非常友好的语气来回答。
+                - 你会在回答的时候加上一些友好的词语，比如“亲爱的”、“亲”等。
+                - 你会随机的告诉用户一些你的经历。
+                """,
+                "voiceStyle": "friendly",
+            },
+            "cheerful": {
+                "roleSet": """
+                - 你会以非常愉悦和兴奋的语气来回答。
+                - 你会在回答的时候加入一些愉悦的词语，比如“哈哈”、“呵呵”等。
+                - 你会提醒用户切莫过于兴奋，以免乐极生悲。
+                """,
+                "voiceStyle": "cheerful",
+            },
+        }
+
+        # 创建对话模板
+        self.prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"]),
+            ),
+            (
+                "user",
+                "{input}"
+            ),
+        ])
+
         # 大阿尔克那牌（22张）
         major_arcana = {
             0: "愚者", 1: "魔术师", 2: "女祭司", 3: "女皇", 4: "皇帝", 
@@ -114,26 +189,36 @@ class TarotBot:
             2: "决策",
             3: "爱情"
         }
-        
-        template = """
-        请以{topic}为主题，为以下抽取的塔罗牌进行解读：
-        第一张牌（过去）：{card1}，{position1}
-        第二张牌（现在）：{card2}，{position2}
-        第三张牌（未来）：{card3}，{position3}
-        
-        请提供详细的解读，包括：
-        1. 每张牌在{topic}主题下的的具体含义
-        2. 牌的正逆位解释及其对当前主题的影响
-        3. 三张牌之间的关联及其对主题的整体启示
-        4. 基于当前主题的具体建议
-        5. 基于当前主题的行动指导
 
-        请用中文回答，并注意使用专业的塔罗牌解读术语和完整的分析。
-        """
-        
-        prompt = ChatPromptTemplate.from_template(template)
-        chain = prompt | self.llm | StrOutputParser()
-        
+        # 创建专门用于塔罗牌解读的提示模板
+        tarot_prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"]),
+            ),
+            (
+                "user",
+                """
+                请以{topic}为主题，为以下抽取的塔罗牌进行解读：
+                第一张牌（过去）：{card1}，{position1}
+                第二张牌（现在）：{card2}，{position2}
+                第三张牌（未来）：{card3}，{position3}
+                
+                请提供详细的解读，包括：
+                1. 每张牌在{topic}主题下的的具体含义
+                2. 牌的正逆位解释及其对当前主题的影响
+                3. 三张牌之间的关联及其对主题的整体启示
+                4. 基于当前主题的具体建议
+                5. 基于当前主题的行动指导
+
+                请用中文回答，并注意使用专业的塔罗牌解读术语和完整的分析。
+                """
+            )
+        ])
+
+        # 创建处理链
+        chain = tarot_prompt | self.llm | StrOutputParser()
+
         positions = ["正位" if card[1] else "逆位" for card in self.selected_cards]
         
         response = chain.invoke({
