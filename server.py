@@ -1,12 +1,15 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_community.chat_message_histories import RedisChatMessageHistory
+from langchain_core.messages import HumanMessage, AIMessage
+from dotenv import load_dotenv
+import uuid
 import random
 import os
 
-# 设置OpenAI API密钥和基础URL
-os.environ["OPENAI_API_KEY"] = ""  # 请替换为您的API密钥
-os.environ["OPENAI_API_BASE"] = ""  # 请替换为您的API基础URL
+# 加载环境变量
+load_dotenv()
 
 class TarotBot:
     def __init__(self):
@@ -94,18 +97,15 @@ class TarotBot:
             },
         }
 
-        # 添加对话历史记录
-        self.chat_history = []
+        # 持久化聊天记录
+        self.MEMORY_KEY = "chat_history"
+
 
         # 创建对话模板
         self.prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
                 self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"]),
-            ),
-            (
-                "system",
-                "以下是之前的对话历史：\n{chat_history}\n请基于以上对话历史来回答用户的问题。"
             ),
             (
                 "user",
@@ -259,28 +259,46 @@ class TarotBot:
         self.cut_cards()
         return self.draw_cards(numbers)
 
+    def initialize_chat_history(self, session_id):
+        """初始化用户的聊天历史记录"""
+        self.message_history = RedisChatMessageHistory(
+            session_id=session_id,
+            # 有密码的redis连接
+            url=os.getenv("REDIS_URL"),
+        )
+
     # 处理用户的一般对话
     def chat(self, user_input):
         """处理用户的一般对话"""
-        # 格式化对话历史
-        formatted_history = "\n".join([
-            f"用户：{msg['user']}\n蔷薇小姐：{msg['assistant']}"
-            for msg in self.chat_history
-        ])
-
-        chain = self.prompt | self.llm | StrOutputParser()
-        response = chain.invoke({
-            "input": user_input,
-            "chat_history": formatted_history
-        })
-
-        # 保存新的对话记录
-        self.chat_history.append({
-            "user": user_input,
-            "assistant": response
-        })
-
-        return response
+        if self.message_history:
+            # 获取历史对话记录
+            messages = self.message_history.messages
+            
+            # 构建包含历史记录的提示模板
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"])),
+                # 添加历史对话记录
+                *[(msg.type, msg.content) for msg in messages],
+                # 添加当前用户输入
+                ("user", "{input}")
+            ])
+            
+            # 将用户消息添加到历史记录
+            self.message_history.add_message(HumanMessage(content=user_input))
+            
+            # 使用包含历史记录的提示生成回复
+            chain = prompt | self.llm | StrOutputParser()
+            response = chain.invoke({"input": user_input})
+            
+            # 将助手回复添加到历史记录
+            self.message_history.add_message(AIMessage(content=response))
+            
+            return response
+        else:
+            # 如果没有历史记录，使用原来的处理方式
+            chain = self.prompt | self.llm | StrOutputParser()
+            response = chain.invoke({"input": user_input})
+            return response
 
     # 处理用户输入，判断是聊天还是占卜
     def handle_input(self, user_input):
@@ -293,6 +311,10 @@ class TarotBot:
 def main():
     bot = TarotBot()
     print(bot.GREETING)
+
+    # 使用 UUID 创建会话 ID
+    session_id = f"user_{str(uuid.uuid4())}"
+    bot.initialize_chat_history(session_id)
 
     # 进入对话循环
     while True:
