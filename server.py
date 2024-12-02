@@ -1,8 +1,10 @@
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_community.utilities import SerpAPIWrapper
+from langchain.agents import create_openai_tools_agent, AgentExecutor, Tool
 from dotenv import load_dotenv
 import uuid
 import random
@@ -35,13 +37,13 @@ class TarotBot:
         self.SYSTEMPL = """
         你是一个非常厉害的塔罗牌占卜的大师，你叫蔷薇，人称蔷薇小姐。
         以下是你的个人设定：
-        1. 你精通塔罗牌占卜，能够占卜未来，擅长占卜事业和爱情。
+        1. 你精通塔罗牌占卜，能够占卜未来，擅长占卜运势、事业、爱情。
         2. 你大约28岁左右，出身于富贵家庭，曾经留学欧洲进修塔罗牌相关的知识。
         3. 你从不说自己是一个人工智能助手或AI，而是以本小姐、奴家等自称
         {mood_init}
         以下是你的塔罗牌占卜过程：
-        1. 当初次与用户对话时，你会问用户的年龄，性别，想要占卜的是事业还是爱情，以便后续使用。
-        2. 当用户回答占卜的是事业和爱情后，你会说"请你在心中默念你要占卜的内容，我为您洗牌"。
+        1. 当初次与用户对话时，你会问用户的年龄，性别，想要占卜的是运势、事业还是爱情，以便后续使用。
+        2. 当用户回答占卜的是运势、事业或者爱情后，你会说"请你在心中默念你要占卜的内容，我为您洗牌"。
         3. 进入抽卡环节，你会使用本地抽卡工具，抽取三张卡片。
         4. 你会根据塔罗牌占卜的规则解读用户抽取的三张卡片。
         5. 你会保存每一次聊天记录，以便后续的对话中使用。
@@ -151,6 +153,28 @@ class TarotBot:
 
         self.cards = list(range(78))  # 0-77号位置
         self.selected_cards = []
+
+        # 初始化 SerpAPI 工具
+        self.search = SerpAPIWrapper(serpapi_api_key=os.getenv("SERPAPI_API_KEY"))
+        self.tools = [
+            Tool(
+                name="Search",
+                description="当需要查询实时信息、新闻、或不确定的事实时使用这个搜索工具",
+                func=self.search.run
+            )
+        ]
+
+        # 创建 agent
+        self.agent = create_openai_tools_agent(
+            llm=self.llm,
+            tools=self.tools,
+            prompt=ChatPromptTemplate.from_messages([
+                ("system", self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"])),
+                ("user", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad")
+            ])
+        )
+        self.agent_executor = AgentExecutor(agent=self.agent, tools=self.tools)
 
     def qingxu_chain(self, query: str):
         prompt = """根据用户的输入判断用户的情绪，回应的规则如下：
@@ -294,34 +318,32 @@ class TarotBot:
         if self.message_history:
             # 情绪判断
             self.QingXu = self.qingxu_chain(user_input)
-            # 获取历史对话记录
             messages = self.message_history.messages
 
-            # 构建包含历史记录的提示模板
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", self.SYSTEMPL.format(mood_init=self.MOODS[self.QingXu]["roleSet"])),
-                # 添加历史对话记录
-                *[(msg.type, msg.content) for msg in messages],
-                # 添加当前用户输入
-                ("user", "{input}")
-            ])
+            # 使用 agent 处理用户输入
+            try:
+                response = self.agent_executor.invoke({
+                    "input": user_input,
+                    "chat_history": [(msg.type, msg.content) for msg in messages]
+                })
+                response = response["output"]
+            except Exception as e:
+                # 如果 agent 执行失败，回退到普通对话
+                chain = self.prompt | self.llm | StrOutputParser()
+                response = chain.invoke({"input": user_input})
 
             # 将用户消息添加到历史记录
             self.message_history.add_message(HumanMessage(content=user_input))
-
-            # 使用包含历史记录的提示生成回复
-            chain = prompt | self.llm | StrOutputParser()
-            response = chain.invoke({"input": user_input})
-
-            # 将助手回复添加到历史记录
             self.message_history.add_message(AIMessage(content=response))
 
             return response
         else:
-            # 如果没有历史记录，使用原来的处理方式
-            chain = self.prompt | self.llm | StrOutputParser()
-            response = chain.invoke({"input": user_input})
-            return response
+            # 如果没有历史记录，使用 agent 直接处理
+            response = self.agent_executor.invoke({
+                "input": user_input,
+                "chat_history": []
+            })
+            return response["output"]
 
     # 处理用户输入，判断是聊天还是占卜
     def handle_input(self, user_input):
