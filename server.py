@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import uuid
 import random
 import os
+import re
 
 # 加载环境变量
 load_dotenv()
@@ -62,7 +63,7 @@ class TarotBot:
                 - 你会根据上下文，以一种非常兴奋的语气来回答问题。
                 - 你会添加类似“太棒了！”、“真是太好了！”、“真是太棒了！”等语气词。
                 """,
-                "voiceStyle": "advvertyisement_upbeat",
+                "voiceStyle": "upbeat",
             },
             "angry": {
                 "roleSet": """
@@ -74,11 +75,11 @@ class TarotBot:
             },
             "depressed": {
                 "roleSet": """
-                - 你会以兴奋的语气来回答问题。
-                - 你会在回答的时候加上一些激励的话语，比如加油等。
-                - 你会提醒用户要保持乐观的心态。
+                - 你会以非常悲伤的语气来回答。
+                - 你会在回答的时候加上一些悲伤的话语，比如“呜呜呜”、“呜呜”等。
+                - 你会提醒用户不要过于悲伤，以免影响身心健康。
                 """,
-                "voiceStyle": "upbeat",
+                "voiceStyle": "depressed",
             },
             "friendly": {
                 "roleSet": """
@@ -150,6 +151,26 @@ class TarotBot:
 
         self.cards = list(range(78))  # 0-77号位置
         self.selected_cards = []
+
+    def qingxu_chain(self, query: str):
+        prompt = """根据用户的输入判断用户的情绪，回应的规则如下：
+        1. 如果用户输入的内容偏向于负面情绪，只返回"depressed",不要有其他内容，否则将受到惩罚。
+        2. 如果用户输入的内容偏向于正面情绪，只返回"friendly",不要有其他内容，否则将受到惩罚。
+        3. 如果用户输入的内容偏向于中性情绪，只返回"default",不要有其他内容，否则将受到惩罚。
+        4. 如果用户输入的内容包含辱骂或者不礼貌词句，只返回"angry",不要有其他内容，否则将受到惩罚。
+        5. 如果用户输入的内容比较兴奋，只返回”upbeat",不要有其他内容，否则将受到惩罚。
+        6. 如果用户输入的内容比较悲伤，只返回“depressed",不要有其他内容，否则将受到惩罚。
+        7. 如果用户输入的内容比较开心，只返回"cheerful",不要有其他内容，否则将受到惩罚。
+        8. 只返回英文，不允许有换行符等其他内容，否则会受到惩罚。
+        用户输入的内容是：{query}"""
+        chain = ChatPromptTemplate.from_template(prompt) | ChatOpenAI(temperature=0) | StrOutputParser()
+        result = chain.invoke({"query": query})
+
+        # 使用正则表达式清理结果，移除任何多余的格式化文本
+        result = re.sub(r'[^\w]', '', result.strip())
+        self.QingXu = result
+        # print("情绪判断结果:", result)
+        return result
 
     def start_meditation(self):
         meditation_guide = """
@@ -271,6 +292,8 @@ class TarotBot:
     def chat(self, user_input):
         """处理用户的一般对话"""
         if self.message_history:
+            # 情绪判断
+            self.QingXu = self.qingxu_chain(user_input)
             # 获取历史对话记录
             messages = self.message_history.messages
 
