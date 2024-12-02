@@ -17,6 +17,15 @@ class TarotBot:
             openai_api_base=os.getenv("OPENAI_API_BASE")
         )
 
+        # 添加初始问候语
+        self.GREETING = """
+        欢迎光临~
+        听说你有什么烦恼吗？
+        我不仅精通塔罗牌占卜，也很乐意和你聊聊天呢~
+        
+        你可以直接和我聊天，或者说"想占卜"来进行塔罗牌占卜哦~
+        """
+
         # 系统设定
         self.SYSTEMPL = """
         你是一个非常厉害的塔罗牌占卜的大师，你叫蔷薇，人称蔷薇小姐。
@@ -237,23 +246,65 @@ class TarotBot:
         self.shuffle_cards()
         self.cut_cards()
         return self.draw_cards(numbers)
+    
+    # 处理用户的一般对话
+    def chat(self, user_input):
+            """处理用户的一般对话"""
+            chain = self.prompt | self.llm | StrOutputParser()
+            return chain.invoke({"input": user_input})
+
+    # 处理用户输入，判断是聊天还是占卜
+    def handle_input(self, user_input):
+        """处理用户输入，判断是聊天还是占卜"""
+        if "占卜" in user_input:
+            return self.start_meditation()
+        else:
+            return self.chat(user_input)
 
 def main():
     bot = TarotBot()
-    
-    # 1. 引导冥想
-    print(bot.start_meditation())
-    topic = int(input("请选择占卜主题（1-3）："))
-    
-    # 2. 请求数字
-    print(bot.request_numbers())
-    
-    # 3. 假设用户输入了三个数字
-    user_numbers = [int(x) for x in input("请输入三个1-78之间的数字，用空格分隔：").split()]
+    print(bot.GREETING)
 
-     # 4. 进行洗牌和切牌
-    bot.shuffle_cards()
-    bot.cut_cards()
+    # 进入对话循环
+    while True:
+        user_input = input("\n请输入（输入'退出'结束对话）：").strip()
+        
+        if user_input.lower() in ['退出', 'quit', 'exit']:
+            print("\n蔷薇小姐：期待下次再见呢~")
+            break
+        if "占卜" in user_input:
+            # 开始占卜流程
+            # 1. 引导冥想
+            print("\n蔷薇小姐：", bot.start_meditation())
+            # 2. 请求数字，确定主题
+            topic = int(input("\n请选择占卜主题（1-3）："))
+            print("\n蔷薇小姐：", bot.request_numbers())
+            user_numbers = [int(x) for x in input("请输入三个1-78之间的数字，用空格分隔：").split()]
+            
+            # 3. 洗牌和抽牌
+            bot.shuffle_cards()
+            bot.cut_cards()
+            
+            # 4. 显示抽到的牌
+            print("\n蔷薇小姐： 您抽到的牌是")
+            selected_cards = []
+            for num in user_numbers:
+                card_index = bot.cards[num-1][0]  # 获取洗牌后该位置的牌的索引
+                is_upright = bot.cards[num-1][1]  # 获取该牌的正逆位
+                selected_cards.append((card_index, is_upright))
+
+            for i, (card_num, is_upright) in enumerate(selected_cards, 1):
+                position = "正位" if is_upright else "逆位"
+                print(f"第{i}张牌：{bot.tarot_cards[card_num]}，{position}")
+            
+            # 5. 解读牌
+            reading = bot.draw_cards(user_numbers, topic)
+            print("\n蔷薇小姐：", reading)
+        else:
+            # 普通对话
+            response = bot.chat(user_input)
+            print("\n蔷薇小姐：", response)
+            
     
     # 5. 显示抽到的牌
     print("\n您抽到的牌是：")
@@ -267,11 +318,6 @@ def main():
         position = "正位" if is_upright else "逆位"
         print(f"第{i}张牌：{bot.tarot_cards[card_num]}，{position}")
     
-    print("\n塔罗牌解读：")
-    reading = bot.draw_cards(user_numbers, topic)
-    print(reading)
-
-
 if __name__ == "__main__":
     main()
 
